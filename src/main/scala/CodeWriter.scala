@@ -48,6 +48,28 @@ class CodeWriter(writer: PrintWriter) {
         writer.println("A=A-1")
         writer.println("M=M|D")
 
+      case "xor" =>
+        writer.println("@SP")        // טוען את הכתובת של SP
+        writer.println("AM=M-1")     // מקטין את SP ב-1, ועכשיו A מצביע ל-y
+        writer.println("D=M")        // D = y
+        writer.println("A=A-1")      // עובר לאיבר שמתחת, כלומר x
+        writer.println("D=D&M")      // D = x & y
+        writer.println("@R13")       // ניגש לרגיסטר זמני R13
+        writer.println("M=D")        // שומר ב-R13 את x & y
+
+        writer.println("@SP")        // חוזר ל-SP
+        writer.println("A=M")        // A מצביע ל-y (כי SP כבר ירד צעד אחד)
+        writer.println("D=M")        // D = y
+        writer.println("A=A-1")      // עובר ל-x
+        writer.println("D=D|M")      // D = x | y
+
+        writer.println("@R13")       // טוען את x & y ששמרנו קודם
+        writer.println("D=D-M")      // D = (x | y) - (x & y) = x ^ y
+
+        writer.println("@SP")        // חוזר למחסנית
+        writer.println("A=M-1")      // מצביע למקום של x
+        writer.println("M=D")        // שומר את תוצאת ה-xor במקום של x
+
       // Unary operations: apply directly to the top stack value
       case "neg" =>
         writer.println("@SP")

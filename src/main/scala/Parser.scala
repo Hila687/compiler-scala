@@ -45,7 +45,7 @@ class Parser(vmFile: File) {
   }
 
   // נגדיר קבוצה של כל הפקודות האריתמטיות והלוגיות האפשריות
-  private val arithmeticCommands = Set("add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not")
+  private val arithmeticCommands = Set("add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not","xor")
 
   // הפונקציה שמחזירה את סוג הפקודה
   def commandType: String = {
