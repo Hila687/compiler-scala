@@ -189,6 +189,27 @@ class CodeWriter(writer: PrintWriter) {
     }
   }
 
+  // Translates label commands into Hack assembly labels
+  def writeLabel(label: String): Unit = {
+    writer.println(s"// label $label")
+    writer.println(s"($currentFileName.$label)")
+  }
+
+  // Translates goto commands into unconditional jump assembly code
+  def writeGoto(label: String): Unit = {
+    writer.println(s"// goto $label")
+    writer.println(s"@$currentFileName.$label")
+    writer.println("0;JMP")
+  }
+
+  // Translates if-goto commands into conditional jump assembly code
+  def writeIf(label: String): Unit = {
+    writer.println(s"// if-goto $label")
+    popStackToD()
+    writer.println(s"@$currentFileName.$label")
+    writer.println("D;JNE")
+  }
+
   // Closes the output writer
   def close(): Unit = {
     writer.close()
