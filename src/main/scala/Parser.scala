@@ -49,38 +49,53 @@ class Parser(vmFile: File) {
 
   // הפונקציה שמחזירה את סוג הפקודה
   def commandType: String = {
-    // נחלק את הפקודה הנוכחית למילים לפי רווחים, וניקח את המילה הראשונה
-    val firstWord = currentCommand.split(" ").head
+    val firstWord = currentCommand.split("\\s+").head
 
-    // נבדוק לאיזו משפחה המילה הראשונה שייכת
-    if (arithmeticCommands.contains(firstWord)) {
-      "C_ARITHMETIC"
-    } else if (firstWord == "push") {
-      "C_PUSH"
-    } else if (firstWord == "pop") {
-      "C_POP"
-    } else {
-      "UNKNOWN_COMMAND" // למקרה של פקודה לא מוכרת
+    firstWord match {
+      case cmd if arithmeticCommands.contains(cmd) => "C_ARITHMETIC"
+      case "push"     => "C_PUSH"
+      case "pop"      => "C_POP"
+      case "label"    => "C_LABEL"
+      case "goto"     => "C_GOTO"
+      case "if-goto"  => "C_IF"
+      case "function" => "C_FUNCTION"
+      case "call"     => "C_CALL"
+      case "return"   => "C_RETURN"
+      case _          => "UNKNOWN_COMMAND"
     }
   }
 
   // מחזירה את הארגומנט הראשון של הפקודה
   def arg1: String = {
+    val parts = currentCommand.split("\\s+")
     val typeOfCommand = commandType
 
-    if (typeOfCommand == "C_ARITHMETIC") {
-      // בפקודות אריתמטיות, הארגומנט הראשון הוא הפקודה עצמה (המילה הראשונה)
-      currentCommand.split(" ").head
-    } else {
-      // בפקודות push או pop, הארגומנט הראשון הוא הסגמנט (המילה השנייה)
-      currentCommand.split(" ")(1)
+    typeOfCommand match {
+      case "C_ARITHMETIC" =>
+        parts(0)
+
+      case "C_PUSH" | "C_POP" | "C_LABEL" | "C_GOTO" | "C_IF" | "C_FUNCTION" | "C_CALL" =>
+        parts(1)
+
+      case "C_RETURN" =>
+        throw new IllegalStateException("arg1 should not be called for C_RETURN")
+
+      case _ =>
+        throw new IllegalArgumentException(s"Unknown command type: $typeOfCommand")
     }
   }
 
   // מחזירה את הארגומנט השני של הפקודה (רלוונטי רק ל-push ו-pop)
   def arg2: Int = {
-    // מניחים שקראו לפונקציה הזו רק עבור פקודות שיש להן ארגומנט שני
-    // לוקחים את המילה השלישית וממירים אותה למספר שלם
-    currentCommand.split(" ")(2).toInt
+    val parts = currentCommand.split("\\s+")
+    val typeOfCommand = commandType
+
+    typeOfCommand match {
+      case "C_PUSH" | "C_POP" | "C_FUNCTION" | "C_CALL" =>
+        parts(2).toInt
+
+      case _ =>
+        throw new IllegalStateException(s"arg2 should not be called for $typeOfCommand")
+    }
   }
 }
