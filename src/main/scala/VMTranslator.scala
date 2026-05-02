@@ -44,6 +44,9 @@ object VMTranslator {
     val codeWriter = new CodeWriter(writer)
 
     try {
+      // Write bootstrap code at the beginning of the ASM file
+      codeWriter.writeInit()
+
       // Process each VM file in the folder
       for (vmFile <- vmFiles) {
         processFile(vmFile, codeWriter)
@@ -102,8 +105,25 @@ object VMTranslator {
             parser.arg2
           )
 
+        case "C_LABEL" =>
+          codeWriter.writeLabel(parser.arg1)
+
+        case "C_GOTO" =>
+          codeWriter.writeGoto(parser.arg1)
+
+        case "C_IF" =>
+          codeWriter.writeIf(parser.arg1)
+
+        case "C_FUNCTION" =>
+          codeWriter.writeFunction(parser.arg1, parser.arg2)
+
+        case "C_RETURN" =>
+          codeWriter.writeReturn()
+
+        case "C_CALL" =>
+          codeWriter.writeCall(parser.arg1, parser.arg2)
+
         case _ =>
-        // No other command types are expected in Project 07
       }
     }
   }

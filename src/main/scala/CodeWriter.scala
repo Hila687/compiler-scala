@@ -9,6 +9,9 @@ class CodeWriter(writer: PrintWriter) {
   // Used to generate unique labels for eq / gt / lt commands
   private var labelCounter: Int = 0
 
+  // Used to generate unique return labels for call commands
+  private var callCounter: Int = 0
+
   // Updates the current file name before translating a new VM file
   def setFileName(fileName: String): Unit = {
     currentFileName = fileName
@@ -208,6 +211,151 @@ class CodeWriter(writer: PrintWriter) {
     popStackToD()
     writer.println(s"@$currentFileName.$label")
     writer.println("D;JNE")
+  }
+
+  // Translates function declaration commands into Hack assembly code
+  def writeFunction(functionName: String, nVars: Int): Unit = {
+    writer.println(s"// function $functionName $nVars")
+    writer.println(s"($functionName)")
+
+    for (_ <- 0 until nVars) {
+      writer.println("@0")
+      writer.println("D=A")
+      pushDToStack()
+    }
+  }
+
+  // Translates return commands into Hack assembly code
+  def writeReturn(): Unit = {
+    writer.println("// return")
+
+    // FRAME = LCL
+    writer.println("@LCL")
+    writer.println("D=M")
+    writer.println("@R13")
+    writer.println("M=D")
+
+    // RET = *(FRAME - 5)
+    writer.println("@5")
+    writer.println("A=D-A")
+    writer.println("D=M")
+    writer.println("@R14")
+    writer.println("M=D")
+
+    // *ARG = pop()
+    popStackToD()
+    writer.println("@ARG")
+    writer.println("A=M")
+    writer.println("M=D")
+
+    // SP = ARG + 1
+    writer.println("@ARG")
+    writer.println("D=M+1")
+    writer.println("@SP")
+    writer.println("M=D")
+
+    // THAT = *(FRAME - 1)
+    writer.println("@R13")
+    writer.println("AM=M-1")
+    writer.println("D=M")
+    writer.println("@THAT")
+    writer.println("M=D")
+
+    // THIS = *(FRAME - 2)
+    writer.println("@R13")
+    writer.println("AM=M-1")
+    writer.println("D=M")
+    writer.println("@THIS")
+    writer.println("M=D")
+
+    // ARG = *(FRAME - 3)
+    writer.println("@R13")
+    writer.println("AM=M-1")
+    writer.println("D=M")
+    writer.println("@ARG")
+    writer.println("M=D")
+
+    // LCL = *(FRAME - 4)
+    writer.println("@R13")
+    writer.println("AM=M-1")
+    writer.println("D=M")
+    writer.println("@LCL")
+    writer.println("M=D")
+
+    // goto RET
+    writer.println("@R14")
+    writer.println("A=M")
+    writer.println("0;JMP")
+  }
+
+  // Used to generate unique return labels for call commands
+  def writeCall(functionName: String, nArgs: Int): Unit = {
+    val returnLabel = s"$functionName$$ret.$callCounter"
+    callCounter += 1
+
+    writer.println(s"// call $functionName $nArgs")
+
+    // push return address
+    writer.println(s"@$returnLabel")
+    writer.println("D=A")
+    pushDToStack()
+
+    // push LCL
+    writer.println("@LCL")
+    writer.println("D=M")
+    pushDToStack()
+
+    // push ARG
+    writer.println("@ARG")
+    writer.println("D=M")
+    pushDToStack()
+
+    // push THIS
+    writer.println("@THIS")
+    writer.println("D=M")
+    pushDToStack()
+
+    // push THAT
+    writer.println("@THAT")
+    writer.println("D=M")
+    pushDToStack()
+
+    // ARG = SP - nArgs - 5
+    writer.println("@SP")
+    writer.println("D=M")
+    writer.println(s"@$nArgs")
+    writer.println("D=D-A")
+    writer.println("@5")
+    writer.println("D=D-A")
+    writer.println("@ARG")
+    writer.println("M=D")
+
+    // LCL = SP
+    writer.println("@SP")
+    writer.println("D=M")
+    writer.println("@LCL")
+    writer.println("M=D")
+
+    // goto functionName
+    writer.println(s"@$functionName")
+    writer.println("0;JMP")
+
+    // return label
+    writer.println(s"($returnLabel)")
+  }
+
+  // Translates the bootstrap code that initializes the VM execution environment
+  def writeInit(): Unit = {
+    writer.println("// bootstrap code")
+
+    // SP = 256
+    writer.println("@256")
+    writer.println("D=A")
+    writer.println("@SP")
+    writer.println("M=D")
+
+    // call Sys.init 0
+    writeCall("Sys.init", 0)
   }
 
   // Closes the output writer
