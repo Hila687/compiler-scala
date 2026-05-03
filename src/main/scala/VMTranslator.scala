@@ -44,8 +44,14 @@ object VMTranslator {
     val codeWriter = new CodeWriter(writer)
 
     try {
-      // Write bootstrap code at the beginning of the ASM file
-      codeWriter.writeInit()
+      // Check if the folder contains "Sys.vm" to determine if we need to write the bootstrap code
+      val needsBootstrap = vmFiles.exists(_.getName == "Sys.vm")
+
+      // If "Sys.vm" is present, write the bootstrap code at the beginning of the output file
+      if (needsBootstrap) {
+        codeWriter.writeInit()
+      }
+
 
       // Process each VM file in the folder
       for (vmFile <- vmFiles) {
