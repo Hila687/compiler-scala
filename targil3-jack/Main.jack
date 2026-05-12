@@ -1,0 +1,197 @@
+class Main {
+
+    function void main() {
+        var int choice, key;
+        var int x, y, size, rotation;
+        var int moves, transformations;
+        var boolean running, isHeart, again;
+
+        let again = true;
+
+        while (again) {
+            let x = 180;
+            let y = 30;
+            let size = 1;
+            let rotation = 0;
+            let moves = 0;
+            let transformations = 0;
+            let running = true;
+            let isHeart = false;
+
+            do Screen.clearScreen();
+            do Output.moveCursor(0, 0);
+
+            do Output.printString("Choose object:");
+            do Output.println();
+            do Output.printString("H - Heart");
+            do Output.println();
+            do Output.printString("S - Star");
+            do Output.println();
+
+            let choice = Main.waitKey();
+
+            if ((choice = 72) | (choice = 104)) {
+                let isHeart = true;
+            }
+
+            do Screen.clearScreen();
+            do Main.drawObject(isHeart, x, y, size, rotation);
+            do Main.printInstructions();
+
+            while (running) {
+                let key = Main.waitKey();
+
+                if ((key = 85) | (key = 117)) { // U/u - up
+                    if (y > 20) {
+                        let y = y - 10;
+                        let moves = moves + 1;
+                    }
+                }
+
+                if ((key = 68) | (key = 100)) { // D/d - down
+
+                    if (isHeart) {
+                        if (((size = 1) & (y < 150)) | ((size = 2) & (y < 105))) {
+                            let y = y + 10;
+                            let moves = moves + 1;
+                        }
+                    }
+
+                    if (~isHeart) {
+                        if (((size = 1) & (y < 130)) | ((size = 2) & (y < 70))) {
+                            let y = y + 10;
+                            let moves = moves + 1;
+                        }
+                    }
+                }
+
+                if ((key = 76) | (key = 108)) { // L/l - left
+                    if (x > 20) {
+                        let x = x - 10;
+                        let moves = moves + 1;
+                    }
+                }
+
+                if ((key = 82) | (key = 114)) { // R/r - right
+                    if (x < 330) {
+                        let x = x + 10;
+                        let moves = moves + 1;
+                    }
+                }
+
+                if ((key = 69) | (key = 101)) { // E/e - enlarge
+                    if (size < 2) {
+                        if (y > 60) {
+                            let y = 60;
+                        }
+
+                        let size = size + 1;
+                        let transformations = transformations + 1;
+                    }
+                }
+
+                if ((key = 75) | (key = 107)) { // K/k - shrink
+                    if (size > 1) {
+                        let size = size - 1;
+                        let transformations = transformations + 1;
+                    }
+                }
+
+                if ((key = 84) | (key = 116)) { // T/t - rotate
+                    let rotation = rotation + 1;
+                    if (rotation = 4) {
+                        let rotation = 0;
+                    }
+                    let transformations = transformations + 1;
+                }
+
+                if ((key = 81) | (key = 113)) { // Q/q - quit
+                    let running = false;
+                }
+
+                if (running) {
+                    do Screen.clearScreen();
+                    do Main.drawObject(isHeart, x, y, size, rotation);
+                    do Main.printInstructions();
+                }
+            }
+
+            do Screen.clearScreen();
+            do Output.moveCursor(0, 0);
+
+            do Output.printString("Summary:");
+            do Output.println();
+            do Output.println();
+
+            if (isHeart) {
+                do Output.printString("Selected object: Heart");
+            }
+
+            if (~isHeart) {
+                do Output.printString("Selected object: Star");
+            }
+
+            do Output.println();
+
+            do Output.printString("Moves: ");
+            do Output.printInt(moves);
+            do Output.println();
+
+            do Output.printString("Transformations: ");
+            do Output.printInt(transformations);
+            do Output.println();
+            do Output.println();
+
+            do Output.printString("Play again? Y/N");
+
+            let key = Main.waitKey();
+
+            if ((key = 89) | (key = 121)) { // Y/y
+                let again = true;
+            }
+
+            if (~((key = 89) | (key = 121))) {
+                let again = false;
+            }
+        }
+
+        do Screen.clearScreen();
+        do Output.moveCursor(0, 0);
+        do Output.printString("Goodbye!");
+
+        return;
+    }
+
+    function void drawObject(boolean isHeart, int x, int y, int size, int rotation) {
+        if (isHeart) {
+            do H.draw(x, y, size, rotation);
+        }
+
+        if (~isHeart) {
+            do S.draw(x, y, size, rotation);
+        }
+
+        return;
+    }
+
+    function void printInstructions() {
+        do Output.moveCursor(20, 0);
+        do Output.printString("U/D/L/R move, E enlarge, K shrink, T rotate, Q quit");
+        return;
+    }
+
+    function int waitKey() {
+        var int key;
+
+        let key = 0;
+
+        while (key = 0) {
+            let key = Keyboard.keyPressed();
+        }
+
+        while (~(Keyboard.keyPressed() = 0)) {
+        }
+
+        return key;
+    }
+}

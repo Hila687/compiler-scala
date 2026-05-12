@@ -1,0 +1,256 @@
+function S.draw 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 5
+push constant 0
+push constant 6
+push constant 3
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 6
+push constant 3
+push constant 10
+push constant 3
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 10
+push constant 3
+push constant 7
+push constant 5
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 7
+push constant 5
+push constant 8
+push constant 9
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 8
+push constant 9
+push constant 5
+push constant 7
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 5
+push constant 7
+push constant 2
+push constant 9
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 2
+push constant 9
+push constant 3
+push constant 5
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 3
+push constant 5
+push constant 0
+push constant 3
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 0
+push constant 3
+push constant 4
+push constant 3
+call S.line 8
+pop temp 0
+push argument 0
+push argument 1
+push argument 2
+push argument 3
+push constant 4
+push constant 3
+push constant 5
+push constant 0
+call S.line 8
+pop temp 0
+push constant 0
+return
+function S.line 5
+push argument 2
+push constant 8
+call Math.multiply 2
+pop local 0
+push argument 3
+push constant 0
+eq
+if-goto IF_TRUE0
+goto IF_FALSE0
+label IF_TRUE0
+push argument 0
+push argument 4
+push local 0
+call Math.multiply 2
+add
+pop local 1
+push argument 1
+push argument 5
+push local 0
+call Math.multiply 2
+add
+pop local 2
+push argument 0
+push argument 6
+push local 0
+call Math.multiply 2
+add
+pop local 3
+push argument 1
+push argument 7
+push local 0
+call Math.multiply 2
+add
+pop local 4
+label IF_FALSE0
+push argument 3
+push constant 1
+eq
+if-goto IF_TRUE1
+goto IF_FALSE1
+label IF_TRUE1
+push argument 0
+push constant 9
+push argument 5
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 1
+push argument 1
+push argument 4
+push local 0
+call Math.multiply 2
+add
+pop local 2
+push argument 0
+push constant 9
+push argument 7
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 3
+push argument 1
+push argument 6
+push local 0
+call Math.multiply 2
+add
+pop local 4
+label IF_FALSE1
+push argument 3
+push constant 2
+eq
+if-goto IF_TRUE2
+goto IF_FALSE2
+label IF_TRUE2
+push argument 0
+push constant 10
+push argument 4
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 1
+push argument 1
+push constant 9
+push argument 5
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 2
+push argument 0
+push constant 10
+push argument 6
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 3
+push argument 1
+push constant 9
+push argument 7
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 4
+label IF_FALSE2
+push argument 3
+push constant 3
+eq
+if-goto IF_TRUE3
+goto IF_FALSE3
+label IF_TRUE3
+push argument 0
+push argument 5
+push local 0
+call Math.multiply 2
+add
+pop local 1
+push argument 1
+push constant 10
+push argument 4
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 2
+push argument 0
+push argument 7
+push local 0
+call Math.multiply 2
+add
+pop local 3
+push argument 1
+push constant 10
+push argument 6
+sub
+push local 0
+call Math.multiply 2
+add
+pop local 4
+label IF_FALSE3
+push local 1
+push local 2
+push local 3
+push local 4
+call Screen.drawLine 4
+pop temp 0
+push constant 0
+return
