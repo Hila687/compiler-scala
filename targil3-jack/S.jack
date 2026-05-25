@@ -1,0 +1,56 @@
+class S {
+
+    function void draw(int x, int y, int size, int rotation) {
+        do S.line(x, y, size, rotation, 5, 0, 6, 3);
+        do S.line(x, y, size, rotation, 6, 3, 10, 3);
+        do S.line(x, y, size, rotation, 10, 3, 7, 5);
+        do S.line(x, y, size, rotation, 7, 5, 8, 9);
+        do S.line(x, y, size, rotation, 8, 9, 5, 7);
+        do S.line(x, y, size, rotation, 5, 7, 2, 9);
+        do S.line(x, y, size, rotation, 2, 9, 3, 5);
+        do S.line(x, y, size, rotation, 3, 5, 0, 3);
+        do S.line(x, y, size, rotation, 0, 3, 4, 3);
+        do S.line(x, y, size, rotation, 4, 3, 5, 0);
+
+        return;
+    }
+
+    function void line(int x, int y, int size, int rotation, int x1, int y1, int x2, int y2) {
+        var int step;
+        var int ax, ay, bx, by;
+
+        let step = size * 8;
+
+        if (rotation = 0) {
+            let ax = x + (x1 * step);
+            let ay = y + (y1 * step);
+            let bx = x + (x2 * step);
+            let by = y + (y2 * step);
+        }
+
+        if (rotation = 1) {
+            let ax = x + ((9 - y1) * step);
+            let ay = y + (x1 * step);
+            let bx = x + ((9 - y2) * step);
+            let by = y + (x2 * step);
+        }
+
+        if (rotation = 2) {
+            let ax = x + ((10 - x1) * step);
+            let ay = y + ((9 - y1) * step);
+            let bx = x + ((10 - x2) * step);
+            let by = y + ((9 - y2) * step);
+        }
+
+        if (rotation = 3) {
+            let ax = x + (y1 * step);
+            let ay = y + ((10 - x1) * step);
+            let bx = x + (y2 * step);
+            let by = y + ((10 - x2) * step);
+        }
+
+        do Screen.drawLine(ax, ay, bx, by);
+
+        return;
+    }
+}
