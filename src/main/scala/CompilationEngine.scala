@@ -1,181 +1,156 @@
 import java.io.PrintWriter
 
-class CompilationEngine(tokenizer: JackTokenizer, writer: PrintWriter) {
+class CompilationEngine(tokenizer: JackTokenizer, writer: PrintWriter, symbolTable: SymbolTable, vmWriter: VMWriter) {
 
-  // פונקציית עזר: מדפיסה טוקן סופי (terminal) ומתקדמת לטוקן הבא
-  private def processTerminal(): Unit = {
-    if (tokenizer.tokenType.nonEmpty) {
-      writer.println(tokenizer.getXmlString)
-    }
-    tokenizer.advance()
-  }
+  private var labelCount: Int = 0
+  private var whileLabelCount: Int = 0
+  private var className: String = ""
 
   /**
    * מנתח מחלקה שלמה (class)
-   * חוק הדקדוק: 'class' className '{' classVarDec* subroutineDec* '}'
    */
   def compileClass(): Unit = {
-    writer.println("<class>")
+    tokenizer.advance() // מדלגים על 'class'
+    className = tokenizer.getTokenValue // שומרים את שם המחלקה שאנחנו נמצאים בה
+    tokenizer.advance() // מדלגים על שם המחלקה
+    tokenizer.advance() // מדלגים על '{'
 
-    // 'class' className '{'
-    processTerminal()
-    processTerminal()
-    processTerminal()
-
-    // לולאה שמטפלת בכל משתני המחלקה (classVarDec*) כל עוד יש static או field
     while (tokenizer.tokenType == "keyword" && (tokenizer.getTokenValue == "static" || tokenizer.getTokenValue == "field")) {
       compileClassVarDec()
     }
 
-    // לולאה שמטפלת בכל הפונקציות (subroutineDec*) כל עוד יש constructor, function או method
     while (tokenizer.tokenType == "keyword" &&
       (tokenizer.getTokenValue == "constructor" || tokenizer.getTokenValue == "function" || tokenizer.getTokenValue == "method")) {
       compileSubroutine()
     }
 
-    // '}'
-    processTerminal()
-
-    writer.println("</class>")
+    tokenizer.advance() // מדלגים על '}'
   }
 
-  /**
-   * מנתח הצהרת משתני מחלקה (static / field)
-   * חוק הדקדוק: ('static' | 'field') type varName (',' varName)* ';'
-   */
   def compileClassVarDec(): Unit = {
-    writer.println("<classVarDec>")
+    val kind = tokenizer.getTokenValue // 'static' או 'field'
+    tokenizer.advance()
+    val typeName = tokenizer.getTokenValue
+    tokenizer.advance() // סוג המשתנה
+    val varName = tokenizer.getTokenValue
+    tokenizer.advance() // שם המשתנה
 
-    // 'static' or 'field'
-    processTerminal()
-    // type (int, char, boolean, className)
-    processTerminal()
-    // varName
-    processTerminal()
+    // שומרים בטבלת הסימבולים!
+    symbolTable.define(varName, typeName, kind)
 
-    // טיפול ברשימת משתנים המופרדים בפסיק ( , var2, var3)
+    // אם יש עוד משתנים באותה שורה עם פסיקים
     while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-      processTerminal() // ','
-      processTerminal() // varName
+      tokenizer.advance() // מדלגים על ','
+      val nextVarName = tokenizer.getTokenValue
+      tokenizer.advance()
+      symbolTable.define(nextVarName, typeName, kind)
     }
 
-    // ';'
-    processTerminal()
-
-    writer.println("</classVarDec>")
+    tokenizer.advance() // מדלגים על ';'
   }
 
-  /**
-   * מנתח הצהרת פונקציה, מתודה או בנאי
-   * חוק הדקדוק: ('constructor' | 'function' | 'method') ('void' | type) subroutineName '(' parameterList ')' subroutineBody
-   */
   def compileSubroutine(): Unit = {
-    writer.println("<subroutineDec>")
+    // מתחילים פונקציה חדשה - מאפסים את טבלת הסימבולים המקומית
+    symbolTable.startSubroutine()
 
-    // 'constructor' | 'function' | 'method'
-    processTerminal()
-    // 'void' | type
-    processTerminal()
-    // subroutineName
-    processTerminal()
-    // '('
-    processTerminal()
+    val subType = tokenizer.getTokenValue // 'constructor', 'function' או 'method'
+    tokenizer.advance()
 
-    // ניתוח רשימת הפרמטרים (תמיד מייצר תגית, גם אם ריקה!)
-    compileParameterList()
+    // במתודה, הפרמטר הראשון הנסתר הוא תמיד this (האובייקט עצמו)
+    if (subType == "method") {
+      symbolTable.define("this", className, "argument")
+    }
 
-    // ')'
-    processTerminal()
+    tokenizer.advance() // מדלגים על סוג ההחזרה (void/int/כו)
+    val subName = tokenizer.getTokenValue
+    tokenizer.advance() // מדלגים על שם הפונקציה
 
-    // ניתוח גוף הפונקציה
-    compileSubroutineBody()
+    val funcName = className + "." + subName // השם המלא ל-VM
 
-    writer.println("</subroutineDec>")
+    tokenizer.advance() // מדלגים על '('
+    compileParameterList() // אוספים את הארגומנטים
+    tokenizer.advance() // מדלגים על ')'
+
+    // קוראים לגוף הפונקציה ומעבירים לו את השם והסוג
+    compileSubroutineBody(funcName, subType)
   }
 
-  /**
-   * מנתח רשימת פרמטרים של פונקציה (לא כולל הסוגריים)
-   * חוק הדקדוק: ((type varName) (',' type varName)*)?
-   */
   def compileParameterList(): Unit = {
-    writer.println("<parameterList>")
-
-    // אם הטוקן הנוכחי הוא לא ')', סימן שיש פרמטרים ברשימה
     if (!(tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ")")) {
-      // type
-      processTerminal()
-      // varName
-      processTerminal()
+      var typeName = tokenizer.getTokenValue
+      tokenizer.advance()
+      var varName = tokenizer.getTokenValue
+      tokenizer.advance()
 
-      // אם יש עוד פרמטרים המופרדים בפסיק
+      symbolTable.define(varName, typeName, "argument")
+
       while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-        processTerminal() // ','
-        processTerminal() // type
-        processTerminal() // varName
+        tokenizer.advance() // ','
+        typeName = tokenizer.getTokenValue
+        tokenizer.advance()
+        varName = tokenizer.getTokenValue
+        tokenizer.advance()
+        symbolTable.define(varName, typeName, "argument")
       }
     }
-
-    writer.println("</parameterList>")
   }
 
-  /**
-   * מנתח את גוף הפונקציה (הבלוק הפנימי)
-   * חוק הדקדוק: '{' varDec* statements '}'
-   */
-  def compileSubroutineBody(): Unit = {
-    writer.println("<subroutineBody>")
+  def compileSubroutineBody(funcName: String, subType: String): Unit = {
+    tokenizer.advance() // מדלגים על '{'
 
-    // '{'
-    processTerminal()
-
-    // לולאה שמטפלת בכל הצהרות המשתנים המקומיים (varDec*) כל עוד יש מילת מפתח var
+    // אוספים את כל המשתנים המקומיים בתוך הפונקציה
     while (tokenizer.tokenType == "keyword" && tokenizer.getTokenValue == "var") {
       compileVarDec()
     }
 
-    // קריאה לניתוח הפקודות בתוך גוף הפונקציה
-    compileStatements()
+    // הופ! עכשיו אנחנו יודעים בדיוק כמה משתנים מקומיים יש לפונקציה
+    val nLocals = symbolTable.varCount("var")
+    vmWriter.writeFunction(funcName, nLocals)
 
-    // '}'
-    processTerminal()
-
-    writer.println("</subroutineBody>")
-  }
-
-  /**
-   * מנתח הצהרת משתנים מקומיים בתוך פונקציה
-   * חוק הדקדוק: 'var' type varName (',' varName)* ';'
-   */
-  def compileVarDec(): Unit = {
-    writer.println("<varDec>")
-
-    // 'var'
-    processTerminal()
-    // type
-    processTerminal()
-    // varName
-    processTerminal()
-
-    // אם יש עוד משתנים באותה שורה המופרדים בפסיק
-    while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-      processTerminal() // ','
-      processTerminal() // varName
+    // התאמות חובה למצביע this בהתאם לסוג הפונקציה
+    if (subType == "constructor") {
+      // בנאי: מקצים זיכרון לאובייקט לפי כמות השדות שלו
+      val fieldCount = symbolTable.varCount("field")
+      vmWriter.writePush("constant", fieldCount)
+      vmWriter.writeCall("Memory.alloc", 1)
+      vmWriter.writePop("pointer", 0) // this = הכתובת החדשה
+    } else if (subType == "method") {
+      // מתודה: מכוונים את this לארגומנט 0 (האובייקט שעליו קראו למתודה)
+      vmWriter.writePush("argument", 0)
+      vmWriter.writePop("pointer", 0)
     }
 
-    // ';'
-    processTerminal()
+    // עכשיו כשהכל מוכן, רצים על שורות הקוד של הפונקציה עצמה
+    compileStatements()
 
-    writer.println("</varDec>")
+    tokenizer.advance() // מדלגים על '}'
+  }
+
+  def compileVarDec(): Unit = {
+    tokenizer.advance() // מדלגים על 'var'
+    val typeName = tokenizer.getTokenValue
+    tokenizer.advance() // סוג
+    val varName = tokenizer.getTokenValue
+    tokenizer.advance() // שם
+
+    symbolTable.define(varName, typeName, "var")
+
+    while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
+      tokenizer.advance() // ','
+      val nextVarName = tokenizer.getTokenValue
+      tokenizer.advance()
+      symbolTable.define(nextVarName, typeName, "var")
+    }
+
+    tokenizer.advance() // ';'
   }
 
   /**
    * מנתח סדרה של פקודות (statements)
-   * חוק הדקדוק: statement*
    */
   def compileStatements(): Unit = {
     writer.println("<statements>")
 
-    // הלולאה רצה כל עוד אנחנו פוגשים מילות מפתח של פקודות חוקיות
     while (tokenizer.tokenType == "keyword" &&
       (tokenizer.getTokenValue == "let" || tokenizer.getTokenValue == "if" ||
         tokenizer.getTokenValue == "while" || tokenizer.getTokenValue == "do" ||
@@ -193,173 +168,375 @@ class CompilationEngine(tokenizer: JackTokenizer, writer: PrintWriter) {
     writer.println("</statements>")
   }
 
+  /**
+   * מנתח פקודת השמה (let) - מתורגם ל-VM!
+   */
   def compileLet(): Unit = {
-    writer.println("<letStatement>")
-    processTerminal() // 'let'
-    processTerminal() // varName
+    tokenizer.advance() // מדלגים על המילה 'let'
+    val varName = tokenizer.getTokenValue
+    tokenizer.advance() // מדלגים על שם המשתנה
 
-    // אם מדובר בהשמה למערך: '[' expression ']'
-    if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == "[") {
-      processTerminal() // '['
-      compileExpression()
-      processTerminal() // ']'
+    // שולפים מראש את הנתונים על המשתנה מטבלת הסימבולים
+    val kind = symbolTable.kindOf(varName)
+    val index = symbolTable.indexOf(varName)
+    val segment = kind match {
+      case "var" => "local"
+      case "argument" => "argument"
+      case "static" => "static"
+      case "field" => "this"
+      case _ => kind
     }
 
-    processTerminal() // '='
+    var isArray = false
+
+    // טיפול במערך: let arr[expression1] = ...
+    if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == "[") {
+      isArray = true
+      tokenizer.advance() // מדלגים על '['
+
+      compileExpression() // מחשב את האינדקס הפנימי (expression1)
+
+      tokenizer.advance() // מדלגים על ']'
+
+      // דוחפים את כתובת הבסיס של המערך למחסנית
+      vmWriter.writePush(segment, index)
+      // מחברים: כתובת בסיס + אינדקס = כתובת היעד המדויקת בזיכרון!
+      vmWriter.writeArithmetic("add")
+    }
+
+    tokenizer.advance() // מדלגים על הסימן '='
+
+    // מחשבים את הערך להשמה (הצד הימני של המשוואה)
     compileExpression()
-    processTerminal() // ';'
-    writer.println("</letStatement>")
+
+    tokenizer.advance() // מדלגים על הסימן ';'
+
+    if (isArray) {
+      // אם זה מערך, משתמשים בטריק ה-THAT:
+      vmWriter.writePop("temp", 0)    // 1. שומרים את הערך שחישבנו בצד
+      vmWriter.writePop("pointer", 1) // 2. מכוונים את THAT לכתובת היעד
+      vmWriter.writePush("temp", 0)   // 3. מחזירים את הערך מהצד
+      vmWriter.writePop("that", 0)    // 4. שומרים אותו בתוך המערך
+    } else {
+      // השמה רגילה למשתנה
+      vmWriter.writePop(segment, index)
+    }
   }
 
   def compileIf(): Unit = {
-    writer.println("<ifStatement>")
-    processTerminal() // 'if'
-    processTerminal() // '('
-    compileExpression()
-    processTerminal() // ')'
-    processTerminal() // '{'
-    compileStatements()
-    processTerminal() // '}'
+    // מייצרים תוויות ייחודיות ל-IF הנוכחי ומקדמים את המונה
+    val labelFalse = "IF_FALSE" + labelCount
+    val labelEnd = "IF_END" + labelCount
+    labelCount += 1
 
-    // טיפול בבלוק else אופציונלי
+    tokenizer.advance() // מדלגים על 'if'
+    tokenizer.advance() // מדלגים על '('
+
+    // 1. מחשבים את התנאי (התוצאה תהיה בראש המחסנית)
+    compileExpression()
+
+    tokenizer.advance() // מדלגים על ')'
+
+    // 2. הופכים את התוצאה ובודקים אם צריך לקפוץ החוצה
+    vmWriter.writeArithmetic("not")
+    vmWriter.writeIf(labelFalse) // אם התנאי הפוך (שקר), קופצים ל-labelFalse
+
+    tokenizer.advance() // מדלגים על '{'
+
+    // 3. מריצים את הפקודות של ה-if
+    compileStatements()
+
+    tokenizer.advance() // מדלגים על '}'
+
+    // 4. מסיימים את ה-if וקופצים לסוף כדי לדלג על ה-else
+    vmWriter.writeGoto(labelEnd)
+
+    // 5. כאן מתחיל אזור ה-else (אם קפצנו לפה, סימן שהתנאי היה שקר)
+    vmWriter.writeLabel(labelFalse)
+
+    // בודקים אם בכלל יש 'else'
     if (tokenizer.tokenType == "keyword" && tokenizer.getTokenValue == "else") {
-      processTerminal() // 'else'
-      processTerminal() // '{'
-      compileStatements()
-      processTerminal() // '}'
+      tokenizer.advance() // מדלגים על 'else'
+      tokenizer.advance() // מדלגים על '{'
+
+      compileStatements() // מריצים את הפקודות של ה-else
+
+      tokenizer.advance() // מדלגים על '}'
     }
-    writer.println("</ifStatement>")
+
+    // 6. התווית של סוף הבלוק כולו
+    vmWriter.writeLabel(labelEnd)
   }
 
   def compileWhile(): Unit = {
-    writer.println("<whileStatement>")
-    processTerminal() // 'while'
-    processTerminal() // '('
+    // מייצרים תוויות ייחודיות ללולאה הנוכחית ומקדמים את המונה
+    val labelExp = "WHILE_EXP" + whileLabelCount
+    val labelEnd = "WHILE_END" + whileLabelCount
+    whileLabelCount += 1
+
+    // 1. מסמנים את נקודת ההתחלה של הלולאה
+    vmWriter.writeLabel(labelExp)
+
+    tokenizer.advance() // מדלגים על 'while'
+    tokenizer.advance() // מדלגים על '('
+
+    // 2. מחשבים את התנאי
     compileExpression()
-    processTerminal() // ')'
-    processTerminal() // '{'
+
+    tokenizer.advance() // מדלגים על ')'
+
+    // 3. הופכים את התוצאה ובודקים אם צריך לצאת מהלולאה
+    vmWriter.writeArithmetic("not")
+    vmWriter.writeIf(labelEnd)
+
+    tokenizer.advance() // מדלגים על '{'
+
+    // 4. מריצים את הפקודות שבתוך הלולאה
     compileStatements()
-    processTerminal() // '}'
-    writer.println("</whileStatement>")
+
+    tokenizer.advance() // מדלגים על '}'
+
+    // 5. קופצים חזרה להתחלה כדי לבדוק את התנאי שוב
+    vmWriter.writeGoto(labelExp)
+
+    // 6. מסמנים את סוף הלולאה
+    vmWriter.writeLabel(labelEnd)
   }
 
   def compileDo(): Unit = {
-    writer.println("<doStatement>")
-    processTerminal() // 'do'
+    tokenizer.advance() // מדלגים על 'do'
 
-    // קריאה לפונקציה/מתודה
-    processTerminal() // שם הפונקציה או שם המחלקה/אובייקט
+    // 1. שומרים את המילה הראשונה (יכול להיות שם פונקציה, שם מחלקה, או שם משתנה-אובייקט)
+    val name1 = tokenizer.getTokenValue
+    tokenizer.advance()
 
+    var funcName = ""
+    var nArgs = 0
+
+    // בודקים אם יש נקודה '.' (למשל Output.print או game.run)
     if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ".") {
-      processTerminal() // '.'
-      processTerminal() // שם המתודה הפנימית
+      tokenizer.advance() // מדלגים על '.'
+      val name2 = tokenizer.getTokenValue // שומרים את שם הפונקציה שאחרי הנקודה
+      tokenizer.advance()
+
+      // שואלים את טבלת הסימבולים: האם name1 הוא משתנה שאנחנו מכירים?
+      val typeOfVar = symbolTable.typeOf(name1)
+      val kindOfVar = symbolTable.kindOf(name1)
+
+      // אם הוא משתנה, זה אומר שאנחנו מפעילים מתודה על אובייקט ספציפי
+      if (kindOfVar != "none" && kindOfVar != null) {
+        val segment = kindOfVar match {
+          case "var" => "local"
+          case "field" => "this"
+          case other => other
+        }
+        // דוחפים את כתובת האובייקט למחסנית (זה בעצם הארגומנט הראשון - this!)
+        vmWriter.writePush(segment, symbolTable.indexOf(name1))
+        funcName = typeOfVar + "." + name2
+        nArgs = 1 // יש לנו כבר ארגומנט אחד שדחפנו (האובייקט עצמו)
+      } else {
+        // אם הוא לא משתנה, סימן ש-name1 הוא פשוט שם של מחלקה (למשל Output)
+        funcName = name1 + "." + name2
+      }
+    } else {
+      // אם אין נקודה בכלל (למשל do draw()), זו קריאה למתודה פנימית באותה מחלקה
+      vmWriter.writePush("pointer", 0) // דוחפים את this של האובייקט הנוכחי!
+      funcName = className + "." + name1
+      nArgs = 1
     }
 
-    processTerminal() // '('
-    compileExpressionList()
-    processTerminal() // ')'
-    processTerminal() // ';'
-    writer.println("</doStatement>")
+    tokenizer.advance() // מדלגים על '('
+
+    // 2. מחשבים ודוחפים את כל הפרמטרים שבין הסוגריים, ומוסיפים אותם לספירה
+    nArgs += compileExpressionList()
+
+    tokenizer.advance() // מדלגים על ')'
+    tokenizer.advance() // מדלגים על ';'
+
+    // 3. קוראים לפונקציה!
+    vmWriter.writeCall(funcName, nArgs)
+
+    // 4. פקודת do תמיד-תמיד מחייבת אותנו לזרוק את התוצאה לפח
+    vmWriter.writePop("temp", 0)
   }
 
   def compileReturn(): Unit = {
-    writer.println("<returnStatement>")
-    processTerminal() // 'return'
+    tokenizer.advance() // מדלגים על המילה 'return'
 
-    // אם הצעד הבא הוא לא ';', סימן שהפונקציה מחזירה ערך (expression)
-    if (!(tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ";")) {
+    // בודקים אם יש ביטוי להחזיר (כלומר, הטוקן הנוכחי הוא לא נקודה-פסיק)
+    if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ";") {
+      // אם אין ביטוי, זאת פונקציית void. ב-VM פונקציית void תמיד מחזירה 0.
+      vmWriter.writePush("constant", 0)
+    } else {
+      // אם יש ביטוי, מחשבים אותו (התוצאה תונח אוטומטית בראש המחסנית)
       compileExpression()
     }
 
-    processTerminal() // ';'
-    writer.println("</returnStatement>")
+    tokenizer.advance() // מדלגים על ';'
+
+    // כותבים את פקודת החזרה של ה-VM
+    vmWriter.writeReturn()
   }
 
-  /**
-   * מנתח ביטוי (expression)
-   * חוק הדקדוק: term (op term)*
-   */
   def compileExpression(): Unit = {
-    writer.println("<expression>")
+    // 1. מחשבים את האיבר הראשון ודוחפים למחסנית
     compileTerm()
 
-    // כל עוד יש אופרטור בינארי חוקי, נמשיך לאסוף אותו ואת האיבר הבא
-    val opSet = Set("+", "-", "*", "/", "&", "|", "<", ">", "=")
-    while (tokenizer.tokenType == "symbol" && opSet.contains(tokenizer.getTokenValue)) {
-      processTerminal() // האופרטור (למשל +)
-      compileTerm()     // האיבר הבא (term)
-    }
+    val opList = List("+", "-", "*", "/", "&", "|", "<", ">", "=")
 
-    writer.println("</expression>")
-  }
+    // כל עוד יש אופרטור, סימן שהביטוי ממשיך (למשל x + y + z)
+    while (tokenizer.tokenType == "symbol" && opList.contains(tokenizer.getTokenValue)) {
+      // 2. שומרים את האופרטור
+      val op = tokenizer.getTokenValue
+      tokenizer.advance() // מדלגים עליו
 
-  /**
-   * מנתח איבר בודד בתוך ביטוי (term)
-   */
-  def compileTerm(): Unit = {
-    writer.println("<term>")
-
-    // קבועים בסיסיים: מספר, מחרוזת או מילים שמורות (true, false, null, this)
-    if (tokenizer.tokenType == "integerConstant" || tokenizer.tokenType == "stringConstant" || tokenizer.tokenType == "keyword") {
-      processTerminal()
-    }
-    // מזהים (משתנים, מערכים או קריאות לפונקציות)
-    else if (tokenizer.tokenType == "identifier") {
-      processTerminal() // שם המזהה
-
-      // א. מערך: varName[expression]
-      if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == "[") {
-        processTerminal() // '['
-        compileExpression()
-        processTerminal() // ']'
-      }
-      // ב. קריאה ישירה לפונקציה: subroutineName(arguments)
-      else if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == "(") {
-        processTerminal() // '('
-        compileExpressionList()
-        processTerminal() // ')'
-      }
-      // ג. קריאה דרך אובייקט/מחלקה: className.methodName(arguments)
-      else if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ".") {
-        processTerminal() // '.'
-        processTerminal() // methodName
-        processTerminal() // '('
-        compileExpressionList()
-        processTerminal() // ')'
-      }
-    }
-    // אופרטור אונרי (כמו מינוס לפני מספר או סימן שלילת לוגיקה ~)
-    else if (tokenizer.tokenType == "symbol" && (tokenizer.getTokenValue == "-" || tokenizer.getTokenValue == "~")) {
-      processTerminal()
+      // 3. מחשבים את האיבר הבא ודוחפים למחסנית
       compileTerm()
-    }
-    // ביטוי פנימי עטוף בסוגריים: '(' expression ')'
-    else if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == "(") {
-      processTerminal() // '('
-      compileExpression()
-      processTerminal() // ')'
-    }
 
-    writer.println("</term>")
+      // 4. מפעילים את הפעולה המתמטית על שני האיברים שבראש המחסנית
+      op match {
+        case "+" => vmWriter.writeArithmetic("add")
+        case "-" => vmWriter.writeArithmetic("sub")
+        case "*" => vmWriter.writeCall("Math.multiply", 2) // קריאת מערכת לכפל
+        case "/" => vmWriter.writeCall("Math.divide", 2)   // קריאת מערכת לחילוק
+        case "&" => vmWriter.writeArithmetic("and")
+        case "|" => vmWriter.writeArithmetic("or")
+        case "<" => vmWriter.writeArithmetic("lt")
+        case ">" => vmWriter.writeArithmetic("gt")
+        case "=" => vmWriter.writeArithmetic("eq")
+        case _ => // לא אמור לקרות
+      }
+    }
   }
 
-  /**
-   * מנתח רשימת ביטויים המופרדים בפסיקים (עבור ארגומנטים של פונקציות)
-   * חוק הדקדוק: (expression (I ',' expression)*)?
-   */
-  def compileExpressionList(): Unit = {
-    writer.println("<expressionList>")
+  def compileTerm(): Unit = {
+    val tType = tokenizer.tokenType
+    val tVal = tokenizer.getTokenValue
 
-    // הרשימה מסתיימת כשפוגשים סוגר ימני ')'
+    if (tType == "integerConstant") {
+      vmWriter.writePush("constant", tVal.toInt)
+      tokenizer.advance()
+    }
+    else if (tType == "stringConstant") {
+      val str = tVal
+      vmWriter.writePush("constant", str.length)
+      vmWriter.writeCall("String.new", 1) // יוצרים אובייקט מחרוזת חדש במערכת ההפעלה
+
+      // דוחפים תו-תו (קוד ASCII) ומוסיפים למחרוזת
+      for (i <- 0 until str.length) {
+        vmWriter.writePush("constant", str.charAt(i).toInt)
+        vmWriter.writeCall("String.appendChar", 2)
+      }
+      tokenizer.advance()
+    }
+    else if (tType == "keyword") {
+      tVal match {
+        case "true" =>
+          // ב-Jack הערך האמיתי של true הוא מינוס 1 (היפוך ביטים של 0)
+          vmWriter.writePush("constant", 0)
+          vmWriter.writeArithmetic("not")
+        case "false" | "null" =>
+          vmWriter.writePush("constant", 0)
+        case "this" =>
+          vmWriter.writePush("pointer", 0)
+        case _ =>
+      }
+      tokenizer.advance()
+    }
+    else if (tType == "identifier") {
+      val name1 = tVal
+      tokenizer.advance() // מקדמים כדי לראות מה יש אחרי השם
+
+      // מציצים לטוקן הבא כדי להבין אם זה מערך, קריאה לפונקציה או משתנה רגיל
+      val nextToken = if (tokenizer.tokenType != "") tokenizer.getTokenValue else ""
+
+      if (nextToken == "[") {
+        // --- 1. טיפול במערך (name1[expression]) ---
+        val kind = symbolTable.kindOf(name1)
+        val segment = kind match { case "var" => "local" case "field" => "this" case other => other }
+        vmWriter.writePush(segment, symbolTable.indexOf(name1)) // דוחפים כתובת בסיס
+
+        tokenizer.advance() // מדלגים על '['
+        compileExpression() // מחשבים את האינדקס
+        tokenizer.advance() // מדלגים על ']'
+
+        vmWriter.writeArithmetic("add") // מחברים: כתובת בסיס + אינדקס
+        vmWriter.writePop("pointer", 1) // מכוונים את THAT לכתובת היעד
+        vmWriter.writePush("that", 0)   // שולפים את הערך מתוך המערך אל המחסנית!
+      }
+      else if (nextToken == "(" || nextToken == ".") {
+        // --- 2. טיפול בקריאה לפונקציה (name1.func() או name1()) ---
+        var funcName = ""
+        var nArgs = 0
+
+        if (nextToken == ".") {
+          tokenizer.advance() // מדלגים על '.'
+          val name2 = tokenizer.getTokenValue
+          tokenizer.advance() // מדלגים על שם הפונקציה
+
+          val kindOfVar = symbolTable.kindOf(name1)
+          val typeOfVar = symbolTable.typeOf(name1)
+
+          if (kindOfVar != "none" && kindOfVar != null) {
+            val segment = kindOfVar match { case "var" => "local" case "field" => "this" case other => other }
+            vmWriter.writePush(segment, symbolTable.indexOf(name1))
+            funcName = typeOfVar + "." + name2
+            nArgs = 1
+          } else {
+            funcName = name1 + "." + name2
+          }
+        } else {
+          vmWriter.writePush("pointer", 0)
+          funcName = className + "." + name1
+          nArgs = 1
+        }
+
+        tokenizer.advance() // מדלגים על '('
+        nArgs += compileExpressionList()
+        tokenizer.advance() // מדלגים על ')'
+
+        vmWriter.writeCall(funcName, nArgs)
+      }
+      else {
+        // --- 3. טיפול במשתנה רגיל ---
+        val kind = symbolTable.kindOf(name1)
+        val segment = kind match { case "var" => "local" case "field" => "this" case other => other }
+        vmWriter.writePush(segment, symbolTable.indexOf(name1))
+      }
+    }
+    else if (tType == "symbol" && (tVal == "-" || tVal == "~")) {
+      // --- טיפול באופרטור לפני איבר (למשל מינוס) ---
+      val op = tVal
+      tokenizer.advance()
+      compileTerm() // קודם מחשבים את האיבר
+
+      if (op == "-") vmWriter.writeArithmetic("neg")
+      else vmWriter.writeArithmetic("not")
+    }
+    else if (tType == "symbol" && tVal == "(") {
+      // --- טיפול בסוגריים ---
+      tokenizer.advance() // '('
+      compileExpression()
+      tokenizer.advance() // ')'
+    }
+  }
+
+  def compileExpressionList(): Int = {
+    var nArgs = 0 // מונה ארגומנטים
+
+    // אם הרשימה לא ריקה (הצעד הבא הוא לא סוגר ימני)
     if (!(tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ")")) {
       compileExpression()
+      nArgs += 1
 
+      // כל עוד יש פסיקים, ממשיכים לחשב את הביטויים הבאים
       while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-        processTerminal() // ','
+        tokenizer.advance() // מדלגים על הפסיק (במקום ה-processTerminal שהיה)
         compileExpression()
+        nArgs += 1
       }
     }
 
-    writer.println("</expressionList>")
+    nArgs // מחזירים את מספר הארגומנטים שנספרו
   }
 }
