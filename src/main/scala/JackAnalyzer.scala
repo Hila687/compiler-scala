@@ -42,8 +42,10 @@ object JackAnalyzer {
 
         val vmWriter = new VMWriter(writer)
 
+        val symbolTable = new SymbolTable()
+
         // The CompilationEngine performs the actual Jack-to-VM translation.
-        val engine = new CompilationEngine(tokenizer, vmWriter)
+        val engine = new CompilationEngine(tokenizer, writer, symbolTable, vmWriter)
         engine.compileClass()
 
         println(s"Successfully created: ${outputFile.getName}")
