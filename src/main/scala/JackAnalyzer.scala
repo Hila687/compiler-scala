@@ -16,7 +16,9 @@ object JackAnalyzer {
       return
     }
 
-    val jackFiles = folder.listFiles().filter(file => file.isFile && file.getName.endsWith(".jack"))
+    val jackFiles = folder
+      .listFiles()
+      .filter(file => file.isFile && file.getName.endsWith(".jack"))
 
     if (jackFiles == null || jackFiles.isEmpty) {
       println("No .jack files found in the given directory.")
@@ -25,32 +27,36 @@ object JackAnalyzer {
 
     for (jackFile <- jackFiles) {
 
-      // שינוי 1: הפלט הוא עכשיו xxx.xml (בלי ה-T), בדיוק לפי ההוראות
-      val outputFileName = jackFile.getAbsolutePath.replace(".jack", ".xml")
+      // Project 11 output: each .jack file is translated into a .vm file.
+      val outputFileName = jackFile.getAbsolutePath.replace(".jack", ".vm")
       val outputFile = new File(outputFileName)
       val writer = new PrintWriter(outputFile)
 
       try {
         val tokenizer = new JackTokenizer(jackFile)
 
-        // שינוי 2: אנחנו חייבות לקרוא לטוקן הראשון כדי שהמנוע יוכל להתחיל לעבוד
+        // Advance to the first token before starting the compilation process.
         if (tokenizer.hasMoreTokens) {
           tokenizer.advance()
         }
 
-        // שינוי 3: יצירת ה-CompilationEngine והפעלת החוק הראשי (class)
-        val engine = new CompilationEngine(tokenizer, writer)
+        val vmWriter = new VMWriter(writer)
+
+        // The CompilationEngine performs the actual Jack-to-VM translation.
+        val engine = new CompilationEngine(tokenizer, vmWriter)
         engine.compileClass()
 
         println(s"Successfully created: ${outputFile.getName}")
 
       } catch {
-        case e: Exception => println(s"Error processing file ${jackFile.getName}: ${e.getMessage}")
+        case e: Exception =>
+          println(s"Error processing file ${jackFile.getName}: ${e.getMessage}")
+
       } finally {
         writer.close()
       }
     }
 
-    println("Parsing complete!")
+    println("Compilation complete!")
   }
 }

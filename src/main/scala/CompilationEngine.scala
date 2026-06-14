@@ -1,171 +1,193 @@
 import java.io.PrintWriter
+import java.io.StringWriter
 
-class CompilationEngine(tokenizer: JackTokenizer, writer: PrintWriter) {
+class CompilationEngine(tokenizer: JackTokenizer, vmWriter: VMWriter) {
 
-  // פונקציית עזר: מדפיסה טוקן סופי (terminal) ומתקדמת לטוקן הבא
-  private def processTerminal(): Unit = {
-    if (tokenizer.tokenType.nonEmpty) {
-      writer.println(tokenizer.getXmlString)
-    }
+  private val symbolTable = new SymbolTable()
+
+  private var className = ""
+  private var currentSubroutineName = ""
+  private var currentSubroutineType = ""
+
+  // Temporary dummy writer.
+  // This keeps the old XML-writing code compiling until the VM translation
+  // of statements and expressions is implemented.
+  private val writer = new PrintWriter(new StringWriter())
+
+  // Consumes the current token and advances to the next one.
+  // Returns the consumed token value, so the compiler can use it.
+  private def processTerminal(): String = {
+    val value = tokenizer.getTokenValue
     tokenizer.advance()
+    value
   }
 
   /**
-   * מנתח מחלקה שלמה (class)
-   * חוק הדקדוק: 'class' className '{' classVarDec* subroutineDec* '}'
+   * Compiles a complete Jack class.
+   * Grammar: 'class' className '{' classVarDec* subroutineDec* '}'
    */
   def compileClass(): Unit = {
-    writer.println("<class>")
 
-    // 'class' className '{'
-    processTerminal()
-    processTerminal()
-    processTerminal()
+    processTerminal()              // 'class'
+    className = processTerminal()  // className
+    processTerminal()              // '{'
 
-    // לולאה שמטפלת בכל משתני המחלקה (classVarDec*) כל עוד יש static או field
-    while (tokenizer.tokenType == "keyword" && (tokenizer.getTokenValue == "static" || tokenizer.getTokenValue == "field")) {
+    while (
+      tokenizer.tokenType == "keyword" &&
+        (tokenizer.getTokenValue == "static" || tokenizer.getTokenValue == "field")
+    ) {
       compileClassVarDec()
     }
 
-    // לולאה שמטפלת בכל הפונקציות (subroutineDec*) כל עוד יש constructor, function או method
-    while (tokenizer.tokenType == "keyword" &&
-      (tokenizer.getTokenValue == "constructor" || tokenizer.getTokenValue == "function" || tokenizer.getTokenValue == "method")) {
+    while (
+      tokenizer.tokenType == "keyword" &&
+        (
+          tokenizer.getTokenValue == "constructor" ||
+            tokenizer.getTokenValue == "function" ||
+            tokenizer.getTokenValue == "method"
+          )
+    ) {
       compileSubroutine()
     }
 
-    // '}'
-    processTerminal()
-
-    writer.println("</class>")
+    processTerminal()              // '}'
   }
 
   /**
-   * מנתח הצהרת משתני מחלקה (static / field)
-   * חוק הדקדוק: ('static' | 'field') type varName (',' varName)* ';'
+   * Compiles class-level variable declarations.
+   * Grammar: ('static' | 'field') type varName (',' varName)* ';'
    */
   def compileClassVarDec(): Unit = {
-    writer.println("<classVarDec>")
 
-    // 'static' or 'field'
-    processTerminal()
-    // type (int, char, boolean, className)
-    processTerminal()
-    // varName
-    processTerminal()
+    val kind = processTerminal()      // 'static' or 'field'
+    val typeName = processTerminal()  // type
+    val name = processTerminal()      // varName
 
-    // טיפול ברשימת משתנים המופרדים בפסיק ( , var2, var3)
+    symbolTable.define(name, typeName, kind)
+
     while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-      processTerminal() // ','
-      processTerminal() // varName
+      processTerminal()              // ','
+      val nextName = processTerminal()
+      symbolTable.define(nextName, typeName, kind)
     }
 
-    // ';'
-    processTerminal()
-
-    writer.println("</classVarDec>")
+    processTerminal()                // ';'
   }
 
   /**
-   * מנתח הצהרת פונקציה, מתודה או בנאי
-   * חוק הדקדוק: ('constructor' | 'function' | 'method') ('void' | type) subroutineName '(' parameterList ')' subroutineBody
+   * Compiles a constructor, function, or method declaration.
+   * Grammar:
+   * ('constructor' | 'function' | 'method')
+   * ('void' | type) subroutineName '(' parameterList ')' subroutineBody
    */
   def compileSubroutine(): Unit = {
-    writer.println("<subroutineDec>")
 
-    // 'constructor' | 'function' | 'method'
-    processTerminal()
-    // 'void' | type
-    processTerminal()
-    // subroutineName
-    processTerminal()
-    // '('
-    processTerminal()
+    currentSubroutineType = processTerminal()  // constructor / function / method
+    processTerminal()                          // return type
+    currentSubroutineName = processTerminal()  // subroutineName
 
-    // ניתוח רשימת הפרמטרים (תמיד מייצר תגית, גם אם ריקה!)
-    compileParameterList()
+    // Each subroutine has its own argument/local scope.
+    symbolTable.startSubroutine()
 
-    // ')'
-    processTerminal()
-
-    // ניתוח גוף הפונקציה
-    compileSubroutineBody()
-
-    writer.println("</subroutineDec>")
-  }
-
-  /**
-   * מנתח רשימת פרמטרים של פונקציה (לא כולל הסוגריים)
-   * חוק הדקדוק: ((type varName) (',' type varName)*)?
-   */
-  def compileParameterList(): Unit = {
-    writer.println("<parameterList>")
-
-    // אם הטוקן הנוכחי הוא לא ')', סימן שיש פרמטרים ברשימה
-    if (!(tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ")")) {
-      // type
-      processTerminal()
-      // varName
-      processTerminal()
-
-      // אם יש עוד פרמטרים המופרדים בפסיק
-      while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-        processTerminal() // ','
-        processTerminal() // type
-        processTerminal() // varName
-      }
+    // In Jack, every method receives 'this' as argument 0.
+    if (currentSubroutineType == "method") {
+      symbolTable.define("this", className, "argument")
     }
 
-    writer.println("</parameterList>")
+    processTerminal()      // '('
+    compileParameterList()
+    processTerminal()      // ')'
+
+    compileSubroutineBody()
   }
 
   /**
-   * מנתח את גוף הפונקציה (הבלוק הפנימי)
-   * חוק הדקדוק: '{' varDec* statements '}'
+   * Compiles the parameter list of a subroutine.
+   * Grammar: ((type varName) (',' type varName)*)?
+   */
+  def compileParameterList(): Unit = {
+
+    // Empty parameter list.
+    if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ")") {
+      return
+    }
+
+    val firstType = processTerminal()  // type
+    val firstName = processTerminal()  // varName
+    symbolTable.define(firstName, firstType, "argument")
+
+    while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
+      processTerminal()                // ','
+      val typeName = processTerminal() // type
+      val name = processTerminal()     // varName
+      symbolTable.define(name, typeName, "argument")
+    }
+  }
+
+  /**
+   * Compiles the body of a subroutine.
+   * Grammar: '{' varDec* statements '}'
    */
   def compileSubroutineBody(): Unit = {
-    writer.println("<subroutineBody>")
 
-    // '{'
-    processTerminal()
+    processTerminal() // '{'
 
-    // לולאה שמטפלת בכל הצהרות המשתנים המקומיים (varDec*) כל עוד יש מילת מפתח var
+    // First, collect all local variable declarations.
     while (tokenizer.tokenType == "keyword" && tokenizer.getTokenValue == "var") {
       compileVarDec()
     }
 
-    // קריאה לניתוח הפקודות בתוך גוף הפונקציה
+    val fullFunctionName = s"$className.$currentSubroutineName"
+    val nLocals = symbolTable.varCount("var")
+
+    // VM function declaration must be written after counting local variables.
+    vmWriter.writeFunction(fullFunctionName, nLocals)
+
+    currentSubroutineType match {
+
+      case "constructor" =>
+        val fieldCount = symbolTable.varCount("field")
+        vmWriter.writePush("constant", fieldCount)
+        vmWriter.writeCall("Memory.alloc", 1)
+        vmWriter.writePop("pointer", 0)
+
+      case "method" =>
+        vmWriter.writePush("argument", 0)
+        vmWriter.writePop("pointer", 0)
+
+      case "function" =>
+      // No special initialization is needed for regular functions.
+
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Unknown subroutine type: $currentSubroutineType"
+        )
+    }
+
     compileStatements()
 
-    // '}'
-    processTerminal()
-
-    writer.println("</subroutineBody>")
+    processTerminal() // '}'
   }
 
   /**
-   * מנתח הצהרת משתנים מקומיים בתוך פונקציה
-   * חוק הדקדוק: 'var' type varName (',' varName)* ';'
+   * Compiles local variable declarations inside a subroutine.
+   * Grammar: 'var' type varName (',' varName)* ';'
    */
   def compileVarDec(): Unit = {
-    writer.println("<varDec>")
 
-    // 'var'
-    processTerminal()
-    // type
-    processTerminal()
-    // varName
-    processTerminal()
+    processTerminal()                // 'var'
+    val typeName = processTerminal() // type
+    val name = processTerminal()     // varName
 
-    // אם יש עוד משתנים באותה שורה המופרדים בפסיק
+    symbolTable.define(name, typeName, "var")
+
     while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-      processTerminal() // ','
-      processTerminal() // varName
+      processTerminal()              // ','
+      val nextName = processTerminal()
+      symbolTable.define(nextName, typeName, "var")
     }
 
-    // ';'
-    processTerminal()
-
-    writer.println("</varDec>")
+    processTerminal()                // ';'
   }
 
   /**
