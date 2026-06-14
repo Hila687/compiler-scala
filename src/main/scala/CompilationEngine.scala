@@ -1,148 +1,154 @@
 import java.io.PrintWriter
+import java.io.StringWriter
 
-class CompilationEngine(tokenizer: JackTokenizer, writer: PrintWriter, symbolTable: SymbolTable, vmWriter: VMWriter) {
+class CompilationEngine(
+                         tokenizer: JackTokenizer,
+                         writer: PrintWriter,
+                         symbolTable: SymbolTable,
+                         vmWriter: VMWriter
+                       ) {
 
   private var labelCount: Int = 0
   private var whileLabelCount: Int = 0
-  private var className: String = ""
 
-  /**
-   * מנתח מחלקה שלמה (class)
-   */
+  private var className = ""
+  private var currentSubroutineName = ""
+  private var currentSubroutineType = ""
+
+  private def processTerminal(): String = {
+    val value = tokenizer.getTokenValue
+    tokenizer.advance()
+    value
+  }
+
   def compileClass(): Unit = {
-    tokenizer.advance() // מדלגים על 'class'
-    className = tokenizer.getTokenValue // שומרים את שם המחלקה שאנחנו נמצאים בה
-    tokenizer.advance() // מדלגים על שם המחלקה
-    tokenizer.advance() // מדלגים על '{'
+    processTerminal()              // 'class'
+    className = processTerminal()  // className
+    processTerminal()              // '{'
 
-    while (tokenizer.tokenType == "keyword" && (tokenizer.getTokenValue == "static" || tokenizer.getTokenValue == "field")) {
+    while (
+      tokenizer.tokenType == "keyword" &&
+        (tokenizer.getTokenValue == "static" || tokenizer.getTokenValue == "field")
+    ) {
       compileClassVarDec()
     }
 
-    while (tokenizer.tokenType == "keyword" &&
-      (tokenizer.getTokenValue == "constructor" || tokenizer.getTokenValue == "function" || tokenizer.getTokenValue == "method")) {
+    while (
+      tokenizer.tokenType == "keyword" &&
+        (
+          tokenizer.getTokenValue == "constructor" ||
+            tokenizer.getTokenValue == "function" ||
+            tokenizer.getTokenValue == "method"
+          )
+    ) {
       compileSubroutine()
     }
 
-    tokenizer.advance() // מדלגים על '}'
+    processTerminal()              // '}'
   }
 
   def compileClassVarDec(): Unit = {
-    val kind = tokenizer.getTokenValue // 'static' או 'field'
-    tokenizer.advance()
-    val typeName = tokenizer.getTokenValue
-    tokenizer.advance() // סוג המשתנה
-    val varName = tokenizer.getTokenValue
-    tokenizer.advance() // שם המשתנה
+    val kind = processTerminal()
+    val typeName = processTerminal()
+    val name = processTerminal()
 
-    // שומרים בטבלת הסימבולים!
-    symbolTable.define(varName, typeName, kind)
+    symbolTable.define(name, typeName, kind)
 
-    // אם יש עוד משתנים באותה שורה עם פסיקים
     while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-      tokenizer.advance() // מדלגים על ','
-      val nextVarName = tokenizer.getTokenValue
-      tokenizer.advance()
-      symbolTable.define(nextVarName, typeName, kind)
+      processTerminal()
+      val nextName = processTerminal()
+      symbolTable.define(nextName, typeName, kind)
     }
 
-    tokenizer.advance() // מדלגים על ';'
+    processTerminal()
   }
 
   def compileSubroutine(): Unit = {
-    // מתחילים פונקציה חדשה - מאפסים את טבלת הסימבולים המקומית
+    currentSubroutineType = processTerminal()
+    processTerminal()
+    currentSubroutineName = processTerminal()
+
     symbolTable.startSubroutine()
 
-    val subType = tokenizer.getTokenValue // 'constructor', 'function' או 'method'
-    tokenizer.advance()
-
-    // במתודה, הפרמטר הראשון הנסתר הוא תמיד this (האובייקט עצמו)
-    if (subType == "method") {
+    if (currentSubroutineType == "method") {
       symbolTable.define("this", className, "argument")
     }
 
-    tokenizer.advance() // מדלגים על סוג ההחזרה (void/int/כו)
-    val subName = tokenizer.getTokenValue
-    tokenizer.advance() // מדלגים על שם הפונקציה
+    processTerminal()
+    compileParameterList()
+    processTerminal()
 
-    val funcName = className + "." + subName // השם המלא ל-VM
-
-    tokenizer.advance() // מדלגים על '('
-    compileParameterList() // אוספים את הארגומנטים
-    tokenizer.advance() // מדלגים על ')'
-
-    // קוראים לגוף הפונקציה ומעבירים לו את השם והסוג
-    compileSubroutineBody(funcName, subType)
+    compileSubroutineBody()
   }
 
   def compileParameterList(): Unit = {
-    if (!(tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ")")) {
-      var typeName = tokenizer.getTokenValue
-      tokenizer.advance()
-      var varName = tokenizer.getTokenValue
-      tokenizer.advance()
+    if (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ")") {
+      return
+    }
 
-      symbolTable.define(varName, typeName, "argument")
+    val firstType = processTerminal()
+    val firstName = processTerminal()
+    symbolTable.define(firstName, firstType, "argument")
 
-      while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-        tokenizer.advance() // ','
-        typeName = tokenizer.getTokenValue
-        tokenizer.advance()
-        varName = tokenizer.getTokenValue
-        tokenizer.advance()
-        symbolTable.define(varName, typeName, "argument")
-      }
+    while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
+      processTerminal()
+      val typeName = processTerminal()
+      val name = processTerminal()
+      symbolTable.define(name, typeName, "argument")
     }
   }
 
-  def compileSubroutineBody(funcName: String, subType: String): Unit = {
-    tokenizer.advance() // מדלגים על '{'
+  def compileSubroutineBody(): Unit = {
+    processTerminal()
 
-    // אוספים את כל המשתנים המקומיים בתוך הפונקציה
     while (tokenizer.tokenType == "keyword" && tokenizer.getTokenValue == "var") {
       compileVarDec()
     }
 
-    // הופ! עכשיו אנחנו יודעים בדיוק כמה משתנים מקומיים יש לפונקציה
+    val fullFunctionName = s"$className.$currentSubroutineName"
     val nLocals = symbolTable.varCount("var")
-    vmWriter.writeFunction(funcName, nLocals)
 
-    // התאמות חובה למצביע this בהתאם לסוג הפונקציה
-    if (subType == "constructor") {
-      // בנאי: מקצים זיכרון לאובייקט לפי כמות השדות שלו
-      val fieldCount = symbolTable.varCount("field")
-      vmWriter.writePush("constant", fieldCount)
-      vmWriter.writeCall("Memory.alloc", 1)
-      vmWriter.writePop("pointer", 0) // this = הכתובת החדשה
-    } else if (subType == "method") {
-      // מתודה: מכוונים את this לארגומנט 0 (האובייקט שעליו קראו למתודה)
-      vmWriter.writePush("argument", 0)
-      vmWriter.writePop("pointer", 0)
+    vmWriter.writeFunction(fullFunctionName, nLocals)
+
+    currentSubroutineType match {
+      case "constructor" =>
+        val fieldCount = symbolTable.varCount("field")
+        vmWriter.writePush("constant", fieldCount)
+        vmWriter.writeCall("Memory.alloc", 1)
+        vmWriter.writePop("pointer", 0)
+
+      case "method" =>
+        vmWriter.writePush("argument", 0)
+        vmWriter.writePop("pointer", 0)
+
+      case "function" =>
+      // No special initialization is needed.
+
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Unknown subroutine type: $currentSubroutineType"
+        )
     }
 
-    // עכשיו כשהכל מוכן, רצים על שורות הקוד של הפונקציה עצמה
     compileStatements()
 
-    tokenizer.advance() // מדלגים על '}'
+    processTerminal()
   }
 
   def compileVarDec(): Unit = {
-    tokenizer.advance() // מדלגים על 'var'
-    val typeName = tokenizer.getTokenValue
-    tokenizer.advance() // סוג
-    val varName = tokenizer.getTokenValue
-    tokenizer.advance() // שם
+    processTerminal()
+    val typeName = processTerminal()
+    val name = processTerminal()
 
-    symbolTable.define(varName, typeName, "var")
+    symbolTable.define(name, typeName, "var")
 
     while (tokenizer.tokenType == "symbol" && tokenizer.getTokenValue == ",") {
-      tokenizer.advance() // ','
-      val nextVarName = tokenizer.getTokenValue
-      tokenizer.advance()
-      symbolTable.define(nextVarName, typeName, "var")
+      processTerminal()
+      val nextName = processTerminal()
+      symbolTable.define(nextName, typeName, "var")
     }
 
-    tokenizer.advance() // ';'
+    processTerminal()
   }
 
   /**
