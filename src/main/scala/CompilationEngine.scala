@@ -155,23 +155,19 @@ class CompilationEngine(
    * מנתח סדרה של פקודות (statements)
    */
   def compileStatements(): Unit = {
-    writer.println("<statements>")
+    val statementKeywords = List("let", "if", "while", "do", "return")
 
-    while (tokenizer.tokenType == "keyword" &&
-      (tokenizer.getTokenValue == "let" || tokenizer.getTokenValue == "if" ||
-        tokenizer.getTokenValue == "while" || tokenizer.getTokenValue == "do" ||
-        tokenizer.getTokenValue == "return")) {
-
+    // כל עוד הטוקן הנוכחי הוא מילת מפתח של אחת הפקודות, נשלח אותו לפונקציה המתאימה
+    while (tokenizer.tokenType == "keyword" && statementKeywords.contains(tokenizer.getTokenValue)) {
       tokenizer.getTokenValue match {
         case "let" => compileLet()
         case "if" => compileIf()
         case "while" => compileWhile()
         case "do" => compileDo()
         case "return" => compileReturn()
+        case _ =>
       }
     }
-
-    writer.println("</statements>")
   }
 
   /**
@@ -330,7 +326,7 @@ class CompilationEngine(
       val kindOfVar = symbolTable.kindOf(name1)
 
       // אם הוא משתנה, זה אומר שאנחנו מפעילים מתודה על אובייקט ספציפי
-      if (kindOfVar != "none" && kindOfVar != null) {
+      if (kindOfVar != null && kindOfVar.toLowerCase() != "none") {
         val segment = kindOfVar match {
           case "var" => "local"
           case "field" => "this"
@@ -483,7 +479,7 @@ class CompilationEngine(
           val kindOfVar = symbolTable.kindOf(name1)
           val typeOfVar = symbolTable.typeOf(name1)
 
-          if (kindOfVar != "none" && kindOfVar != null) {
+          if (kindOfVar != null && kindOfVar.toLowerCase() != "none") {
             val segment = kindOfVar match { case "var" => "local" case "field" => "this" case other => other }
             vmWriter.writePush(segment, symbolTable.indexOf(name1))
             funcName = typeOfVar + "." + name2
